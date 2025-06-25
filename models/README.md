@@ -1,0 +1,1 @@
+These are official model files and scalars of these. These files were small enough to include here, but if you are that kind of person, you can also find them in [this huggingface collection](https://huggingface.co/collections/sharktide/climatenet-685bd11b912927f8a78554c0)
