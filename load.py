@@ -26,3 +26,8 @@ FloodTrustNet = tf.keras.models.load_model("models/FV-FloodTrustNet.h5", custom_
 })
 
 FloodScaler = joblib.load("models/FV-floodtrust_scaler.pkl")
+
+FireNet.summary()
+FireTrustNet.summary()
+FloodNet.summary()
+FloodTrustNet.summary()
