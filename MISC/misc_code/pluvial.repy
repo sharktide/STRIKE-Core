@@ -1,0 +1,67 @@
+import tensorflow as tf
+from tensorflow.keras.saving import register_keras_serializable
+from tensorflow.keras import layers, models, backend as K
+import pandas as pd
+import joblib
+import numpy as np
+
+@register_keras_serializable()
+def surface_runoff_amplifier(inputs):
+    rain = inputs[:, 0]
+    impervious = inputs[:, 1]
+    rain_boost = tf.sigmoid((rain - 60) * 0.06)
+    impervious_boost = tf.sigmoid((impervious - 0.6) * 10)
+    return (1.0 + 0.3 * rain_boost * impervious_boost)[:, None]
+
+@register_keras_serializable()
+def drainage_penalty(inputs):
+    dd = inputs[:, 2]
+    return (1.0 - 0.4 * tf.sigmoid((dd - 3.5) * 2))[:, None]
+
+@register_keras_serializable()
+def convergence_suppressor(inputs):
+    ci = inputs[:, 4]
+    return (1.0 + 0.3 * tf.sigmoid((ci - 0.5) * 8))[:, None]
+
+@register_keras_serializable()
+def clip_modulation(x):
+    return tf.clip_by_value(x, 0.7, 1.3)
+
+@register_keras_serializable()
+def floodtrust_activation(x):
+    return 0.5 + tf.sigmoid(x)
+
+model = tf.keras.models.load_model("models/PV-FloodNet.h5", custom_objects={
+    'drainage_penalty': drainage_penalty,
+    'convergence_suppressor': convergence_suppressor,
+    'surface_runoff_amplifier': surface_runoff_amplifier,
+    'clip_modulation': clip_modulation
+})
+
+trust_model = tf.keras.models.load_model("models/PV-FloodTrustNet.h5", custom_objects={
+    'floodtrust_activation': floodtrust_activation,
+    'mse': tf.keras.losses.MeanSquaredError()
+})
+
+trust_scaler = joblib.load("models/PV-floodtrust_scaler.pkl")
+
+conditions = pd.DataFrame([{
+    "rainfall_intensity": 100, # high rain but resilient
+    "impervious_ratio": 0.2,
+    "drainage_density": 4.8,
+    "urbanization_index": 0.25,
+    "convergence_index": 0.3
+}])
+
+def predict_with_trustnet(input_df):
+    base_prob = model.predict(input_df)[0][0]
+
+    X_scaled = trust_scaler.transform(input_df)
+    trust_factor = trust_model.predict(X_scaled)[0][0]
+
+    adjusted_prob = np.clip(base_prob * trust_factor, 0, 1)
+    verdict = "🔥 FLOOD LIKELY" if adjusted_prob > 0.5 else "🌿 No Flood"
+    return adjusted_prob, verdict
+
+adjusted_prob, risk = predict_with_trustnet(conditions)
+print(f"Prediction: {risk} | Adjusted Probability: {adjusted_prob:.4f}")
