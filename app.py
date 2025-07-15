@@ -446,7 +446,7 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
                     gr.Dropdown(["ISR"], value="ISR", label="", scale=0.2)
                 with gr.Row():
                     drain_input = gr.Slider(1.0, 5.0, value=2.5, label="Drainage Density")
-                    gr.Dropdown(["tL/tA"], value="tL/tA", label="", scale=0.2)
+                    gr.Dropdown(["L/A"], value="L/A", label="", scale=0.2)
                 with gr.Row():
                     urban_input = gr.Slider(0.0, 1.0, value=0.6, label="Urbanization Index")
                     gr.Dropdown(["uP/tP"], value="uP/tP", label="", scale=0.2)
