@@ -41,6 +41,20 @@ PV_FloodTrustNet = tf.keras.models.load_model("models/PV-FloodTrustNet.h5", cust
 
 PV_FloodScaler = joblib.load("models/PV-floodtrust_scaler.pkl")
 
+FlashFloodNet = tf.keras.models.load_model("models/FlashFloodNet.h5", custom_objects={
+    'drainage_penalty': drainage_penalty,
+    'intensity_slope_amplifier': intensity_slope_amplifier,
+    'convergence_suppressor': convergence_suppressor,
+    'clip_modulation': clip_modulation
+})
+
+FlashFloodTrustNet = tf.keras.models.load_model("models/FlashFloodTrustNet.h5", custom_objects={
+    'mse': tf.keras.losses.MeanSquaredError(),
+    'trust_activation': trust_activation
+})
+
+FlashFloodScaler = joblib.load("models/flashFloodtrustscaler.pkl")
+
 FireNet.summary()
 FireTrustNet.summary()
 FloodNet.summary()

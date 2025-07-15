@@ -101,6 +101,14 @@ def convergence_suppressor(inputs):
     ci = inputs[:, 4]
     return (1.0 + 0.3 * tf.sigmoid((ci - 0.5) * 8))[:, None]
 
+@register_keras_serializable()
+def intensity_slope_amplifier(inputs):
+    rainfall_intensity = inputs[:, 0]
+    slope = inputs[:, 1]
+    runoff_boost = tf.sigmoid((rainfall_intensity - 75) * 0.08)
+    slope_boost = tf.sigmoid((slope - 10) * 0.05)
+    return (1.0 + 0.35 * runoff_boost * slope_boost)[:, None]
+
 ####################################################################################################
 # Activation for all TrustNets
 ####################################################################################################
@@ -111,6 +119,10 @@ def firetrust_activation(x):
 
 @register_keras_serializable()
 def floodtrust_activation(x):
+    return 0.5 + tf.sigmoid(x)
+
+@register_keras_serializable()
+def trust_activation(x):
     return 0.5 + tf.sigmoid(x)
 
 ####################################################################################################

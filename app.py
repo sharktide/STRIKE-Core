@@ -100,6 +100,29 @@ def predict_pluvial_flood(rain, imp, drain, urban, conv, use_trust, rainfall_uni
 
     return f"{verdict} ({final:.2f})"
 
+def predict_flash_flood(rainfall, slope, drainage, saturation, convergence, use_trust):
+    input_data = {
+        "rainfall_intensity": rainfall,
+        "slope": slope,
+        "drainage_density": drainage,
+        "soil_saturation": saturation,
+        "convergence_index": convergence
+    }
+    input_df = pd.DataFrame([input_data])
+    base_pred = FlashFloodNet.predict(input_df)[0][0]
+    if use_trust:
+        trust_score = FlashFloodTrustNet.predict(FlashFloodScaler.transform(input_df))[0][0]
+        adjusted = np.clip(base_pred * trust_score, 0, 1)
+    else:
+        adjusted = base_pred
+
+    if adjusted > 0.55:
+        return f"🌩️ FLASH FLOOD LIKELY ({adjusted:.2f})"
+    elif 0.40 < adjusted <= 0.55:
+        return f"⚠️ Flash Flood Possible ({adjusted:.2f})"
+    else:
+        return f"🛡️ Flash Flood Unlikely ({adjusted:.2f})"
+
 def generate_plot(axis, use_trustnet):
     sweep_values = np.linspace({
         "temperature": (280, 320),
@@ -241,6 +264,41 @@ def generate_pluvial_plot(axis, use_trust):
     ax.grid(True)
     return fig
 
+def generate_flash_plot(axis, use_trust):
+    sweep_values = np.linspace(
+        {"rainfall_intensity": 0, "slope": 0, "drainage_density": 1.0,
+         "soil_saturation": 0.3, "convergence_index": 0.0}[axis],
+        {"rainfall_intensity": 150, "slope": 30, "drainage_density": 5.0,
+         "soil_saturation": 1.0, "convergence_index": 1.0}[axis],
+        100
+    )
+    base_input = {
+        "rainfall_intensity": 90,
+        "slope": 15,
+        "drainage_density": 3.0,
+        "soil_saturation": 0.7,
+        "convergence_index": 0.5
+    }
+
+    sweep_df = pd.DataFrame([{**base_input, axis: val} for val in sweep_values])
+    raw_probs = FlashFloodNet.predict(sweep_df).flatten()
+    if use_trust:
+        trust_mods = FlashFloodTrustNet.predict(FlashFloodScaler.transform(sweep_df)).flatten()
+        adjusted_probs = np.clip(raw_probs * trust_mods, 0, 1)
+    else:
+        adjusted_probs = raw_probs
+
+    fig, ax = plt.subplots()
+    ax.plot(sweep_values, raw_probs, "--", color="gray", label="Base Model")
+    if use_trust:
+        ax.plot(sweep_values, adjusted_probs, color="darkcyan", label="With FlashFloodTrustNet")
+    ax.set_xlabel(axis.replace("_", " ").title())
+    ax.set_ylabel("Flash Flood Probability")
+    ax.set_title(f"Flash Flood Probability vs. {axis.replace('_', ' ').title()}")
+    ax.legend()
+    ax.grid(True)
+    return fig
+
 # Launch the app
 with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1rem !important; padding: 0.8em; } ") as demo:
     gr.Markdown("# ClimateNet - A family of tabular classification models to predict natural disasters")
@@ -290,7 +348,7 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
 
                 **Vegitation Index:** Your area's NDVI score.
                     """)
-                output = gr.Textbox(label="Result")
+                output = gr.Textbox(label="Wildfire Risk Verdict")
                 plot_output = gr.Plot(label="Trust Modulation Plot")
 
     predict_btn.click(
@@ -358,7 +416,7 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
                 **Distance from River:** Horizontal distance from riverbed in meters. This does not account for levees or terrain barriers.
                     """)
 
-                flood_output = gr.Textbox(label="Flood Risk")
+                flood_output = gr.Textbox(label="FV-Flood Risk Verdict")
                 flood_plot = gr.Plot(label="Trust Modulation Plot")
 
     predict_btn_flood.click(
@@ -426,6 +484,68 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
             ),
             inputs=[rain_input, rain_unit_dropdown, imp_input, drain_input, urban_input, conv_input, use_trust_pv, pv_sweep_axis],
             outputs=[pv_output, pv_plot]
+        )
+
+    with gr.Tab("🌩️ Flash Floods"):
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    rainfall_intensity = gr.Slider(0, 150, value=12, label="Rainfall Intensity (mm/hr)")
+                    rainfall_unit_dropdown = gr.Dropdown(["mm/hr", "in/hr"], value="mm/hr", label="", scale=0.2)
+                with gr.Row():
+                    slope_input = gr.Slider(0, 30, value=15, label="Slope (°)")
+                    gr.Dropdown(["°"], label="", scale=0.1)
+
+                with gr.Row():
+                    drainage_input = gr.Slider(1.0, 5.0, value=3.0, label="Drainage Density")
+                    gr.Dropdown(["L/A"], value="L/A", label="", scale=0.2)
+
+                with gr.Row():
+                    saturation_input = gr.Slider(0.3, 1.0, value=0.7, label="Soil Saturation")
+                    gr.Dropdown(["VWC"], value="VWC", label="", scale=0.2)
+
+                with gr.Row():
+                    convergence_input = gr.Slider(0.0, 1.0, value=0.5, label="Convergence Index")
+                    gr.Dropdown(["CI"], value="CI", label="", scale=0.2)
+
+                rainfall_unit_dropdown.change(update_rain_slider, inputs=rainfall_unit_dropdown, outputs=rainfall_intensity)
+
+                use_trust_flash = gr.Checkbox(label="Use FlashFloodTrustNet", value=True)
+
+                flash_sweep_axis = gr.Radio(
+                    ["rainfall_intensity", "slope", "drainage_density", "soil_saturation", "convergence_index"],
+                    label="Sweep Axis", value="rainfall_intensity"
+                )
+
+                flash_predict_btn = gr.Button("Predict")
+
+            with gr.Column():
+                with gr.Accordion("ℹ️ Feature Definitions", open=False):
+                    gr.Markdown("""
+    **Rainfall Intensity:** Measured in mm/hr or in/hr.
+
+    **Slope:** Terrain gradient in degrees.
+
+    **Drainage Density:** Total stream length per unit area.
+
+    **Soil Saturation:** Volumetric water content — higher values = wetter ground.
+
+    **Convergence Index:** Measures topographical tendency to channel runoff.
+    """)
+                flash_output = gr.Textbox(label="Flash Flood Risk Verdict")
+                flash_plot = gr.Plot(label="Trust Modulation Plot")
+
+        flash_predict_btn.click(
+            fn=lambda r, ru, s, d, ss, c, trust, axis: (
+                predict_flash_flood(convert_rainfall_intensity(r, ru), s, d, ss, c, trust),
+                generate_flash_plot(axis, trust)
+            ),
+            inputs=[
+                rainfall_intensity, rainfall_unit_dropdown,
+                slope_input, drainage_input, saturation_input,
+                convergence_input, use_trust_flash, flash_sweep_axis
+            ],
+            outputs=[flash_output, flash_plot]
         )
 
 demo.launch(share=False)

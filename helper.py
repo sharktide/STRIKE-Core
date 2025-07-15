@@ -63,7 +63,7 @@ def update_flood_rainfall_slider(unit):
         return gr.update(minimum=0, maximum=20, value=1, label="Rainfall (in)")
 
 def update_rain_slider(unit):
-    if unit == "mm/hr":
-        return gr.update(minimum=0, maximum=10, label="Rainfall Intensity (in/hr)")
-    elif unit == "in/hr":
-        return gr.update(minimum=0, maximum=150, value=0.5, label="Rainfall Intensity (mm/hr)")
+    if unit == "in/hr":
+        return gr.update(minimum=0, maximum=10, value=0.5, label="Rainfall Intensity (in/hr)")
+    elif unit == "mm/hr":
+        return gr.update(minimum=0, maximum=150, value=12, label="Rainfall Intensity (mm/hr)")
