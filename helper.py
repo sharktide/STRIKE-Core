@@ -17,6 +17,10 @@ def convert_elevation(val, unit):
 
 def convert_distance(val, unit):
     return val if unit == "m" else val * 0.3048
+
+def convert_rainfall_intensity(val, unit):
+    return val if unit == "mm/hr" else val * 25.4
+                                
                                 
 def update_temp_slider(unit):
     if unit == "K":
@@ -57,3 +61,9 @@ def update_flood_rainfall_slider(unit):
         return gr.update(minimum=0, maximum=500, value=25, label="Rainfall (mm)")
     elif unit == "in":
         return gr.update(minimum=0, maximum=20, value=1, label="Rainfall (in)")
+
+def update_rain_slider(unit):
+    if unit == "mm/hr":
+        return gr.update(minimum=0, maximum=10, label="Rainfall Intensity (in/hr)")
+    elif unit == "in/hr":
+        return gr.update(minimum=0, maximum=150, value=0.5, label="Rainfall Intensity (mm/hr)")

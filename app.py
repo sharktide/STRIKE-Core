@@ -29,7 +29,7 @@ def predict_fire(temp, temp_unit, humidity, wind, wind_unit, veg, elev, elev_uni
     elif final > 0.43 and final < 0.50:
         verdict = "⚠️ Fire Possible"
     else:
-        verdict = "🌿 Fire Unlikely"
+        verdict = "🛡️ Fire Unlikely"
     return f"{verdict} ({final:.2f})"
 
 def predict_flood(rainfall_val, rainfall_unit, water_level_val, elevation_val, elev_unit,
@@ -68,7 +68,36 @@ def predict_flood(rainfall_val, rainfall_unit, water_level_val, elevation_val, e
     elif final > 0.43 and final < 0.50:
         verdict = "⚠️ FV-Flood Possible"
     else:
-        verdict = "🌿 FV-Flood Unlikely"
+        verdict = "🛡️ FV-Flood Unlikely"
+    return f"{verdict} ({final:.2f})"
+
+def predict_pluvial_flood(rain, imp, drain, urban, conv, use_trust, rainfall_unit):
+    print(rainfall_unit)
+    rain = convert_rainfall_intensity(rain, rainfall_unit)
+    print(rain)
+    input_data = {
+        "rainfall_intensity": rain,
+        "impervious_ratio": imp,
+        "drainage_density": drain,
+        "urbanization_index": urban,
+        "convergence_index": conv
+    }
+    input_df = pd.DataFrame([input_data])
+    base_prob = PV_FloodNet.predict(input_df)[0][0]
+
+    if use_trust:
+        trust_score = PV_FloodTrustNet.predict(PV_FloodScaler.transform(input_df))[0][0]
+        final = np.clip(base_prob * trust_score, 0, 1)
+    else:
+        final = base_prob
+
+    if final > 0.52:
+        verdict = "🛶 PV-FLOOD LIKELY"
+    elif 0.45 < final <= 0.52:
+        verdict = "⚠️ PV-Flood Possible"
+    else:
+        verdict = "🛡️ PV-Flood Unlikely"
+
     return f"{verdict} ({final:.2f})"
 
 def generate_plot(axis, use_trustnet):
@@ -165,18 +194,58 @@ def generate_flood_plot(axis, use_trustnet):
     if use_trustnet:
         ax.plot(values, modulated_probs, color="blue", label="With FloodTrustNet")
     ax.set_xlabel(axis.replace("_", " ").title())
-    ax.set_ylabel("Flood Probability")
-    ax.set_title(f"Flood Probability vs. {axis.replace('_', ' ').title()}")
+    ax.set_ylabel("FV Flood Probability")
+    ax.set_title(f"FV Flood Probability vs. {axis.replace('_', ' ').title()}")
     ax.grid(True)
     ax.legend()
     return fig
 
+def generate_pluvial_plot(axis, use_trust):
+    sweep_range = {
+        "rainfall_intensity": (0, 160),
+        "impervious_ratio": (0.0, 1.0),
+        "drainage_density": (1.0, 5.0),
+        "urbanization_index": (0.0, 1.0),
+        "convergence_index": (0.0, 1.0)
+    }
+
+    sweep_values = np.linspace(*sweep_range[axis], 100)
+    base_input = {
+        "rainfall_intensity": 60.0,
+        "impervious_ratio": 0.5,
+        "drainage_density": 2.5,
+        "urbanization_index": 0.6,
+        "convergence_index": 0.5
+    }
+
+    sweep_df = pd.DataFrame([
+        {**base_input, axis: val} for val in sweep_values
+    ])
+
+    base_probs = PV_FloodNet.predict(sweep_df).flatten()
+    if use_trust:
+        trust_mods = PV_FloodTrustNet.predict(PV_FloodScaler.transform(sweep_df)).flatten()
+        adjusted = np.clip(base_probs * trust_mods, 0, 1)
+    else:
+        adjusted = base_probs
+
+    fig, ax = plt.subplots()
+    ax.plot(sweep_values, base_probs, "--", color="gray", label="Base Model")
+    if use_trust:
+        ax.plot(sweep_values, adjusted, color="royalblue", label="With PV-FloodTrustNet")
+
+    ax.set_xlabel(axis.replace("_", " ").title())
+    ax.set_ylabel("PV Flood Probability")
+    ax.set_title(f"PV Flood Probability vs. {axis.replace('_', ' ').title()}")
+    ax.legend()
+    ax.grid(True)
+    return fig
 
 # Launch the app
 with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1rem !important; padding: 0.8em; } ") as demo:
     gr.Markdown("# ClimateNet - A family of tabular classification models to predict natural disasters")
 
-    with gr.Tab("🔥 FireNet"):
+    with gr.Tab("🔥Wildfires"):
         with gr.Row():
             with gr.Column():
                 with gr.Row():
@@ -241,7 +310,7 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
         outputs=[output, plot_output]
     )
 
-    with gr.Tab("🏞️ FV-FloodNet"):
+    with gr.Tab("🌊 Fluvial Floods"):
         with gr.Row():
             with gr.Column():
                 with gr.Row():
@@ -308,5 +377,55 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
     ],
     outputs=[flood_output, flood_plot]
     )
+    with gr.Tab("🌧️ Pluvial Floods"):
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    rain_input = gr.Slider(0, 150, value=12, label="Rainfall Intensity (mm/hr)")
+                    rain_unit_dropdown = gr.Dropdown(["mm/hr", "in/hr"], value="mm/hr", label="", scale=0.2)
+                with gr.Row():
+                    imp_input = gr.Slider(0.0, 1.0, value=0.5, label="Impervious Ratio")
+                    gr.Dropdown(["ISR"], value="ISR", label="", scale=0.2)
+                with gr.Row():
+                    drain_input = gr.Slider(1.0, 5.0, value=2.5, label="Drainage Density")
+                    gr.Dropdown(["tL/tA"], value="tL/tA", label="", scale=0.2)
+                with gr.Row():
+                    urban_input = gr.Slider(0.0, 1.0, value=0.6, label="Urbanization Index")
+                    gr.Dropdown(["uP/tP"], value="uP/tP", label="", scale=0.2)
+                with gr.Row():
+                    conv_input = gr.Slider(0.0, 1.0, value=0.5, label="Convergence Index")
+                    gr.Dropdown(["CI"], value="CI", label="", scale=0.2)
+                rain_unit_dropdown.change(update_rain_slider, inputs=rain_unit_dropdown, outputs=rain_input)
+                use_trust_pv = gr.Checkbox(label="Use PV-FloodTrustNet", value=True)
+                pv_sweep_axis = gr.Radio(
+                    ["rainfall_intensity", "impervious_ratio", "drainage_density", "urbanization_index", "convergence_index"],
+                    label="Sweep Axis", value="rainfall_intensity"
+                )
+                pv_predict_btn = gr.Button("Predict")
+
+            with gr.Column():
+                with gr.Accordion("ℹ️ Feature Definitions", open=False):
+                    gr.Markdown("""
+    **Rainfall Intensity:** Recent precipitation rate, typically measured in mm/hr.
+
+    **Impervious Ratio:** Proportion of surface area that cannot absorb water.
+
+    **Drainage Density:** Drainage channel length per unit area.
+
+    **Urbanization Index:** Estimate of built-up density and infrastructure pressure.
+
+    **Convergence Index:** Terrain feature promoting water pooling or runoff directionality.
+                    """)
+                pv_output = gr.Textbox(label="PV-Flood Risk Verdict")
+                pv_plot = gr.Plot(label="Trust Modulation Plot")
+
+        pv_predict_btn.click(
+            fn=lambda r, ra, i, d, u, c, trust, axis: (
+                predict_pluvial_flood(r, i, d, u, c, trust, ra),
+                generate_pluvial_plot(axis, trust)
+            ),
+            inputs=[rain_input, rain_unit_dropdown, imp_input, drain_input, urban_input, conv_input, use_trust_pv, pv_sweep_axis],
+            outputs=[pv_output, pv_plot]
+        )
 
 demo.launch(share=False)

@@ -52,7 +52,7 @@ def fire_suppression_mask(inputs):
 
 
 ####################################################################################################
-# FloodNet
+# FloodNets
 ####################################################################################################
 
 @register_keras_serializable()
@@ -83,6 +83,24 @@ def flood_suppression_mask(inputs):
     suppression = flatness * dryness
     return 1.0 - 0.3 * suppression[:, None]
 
+@register_keras_serializable()
+def surface_runoff_amplifier(inputs):
+    rain = inputs[:, 0]
+    impervious = inputs[:, 1]
+    rain_boost = tf.sigmoid((rain - 60) * 0.06)
+    impervious_boost = tf.sigmoid((impervious - 0.6) * 10)
+    return (1.0 + 0.3 * rain_boost * impervious_boost)[:, None]
+
+@register_keras_serializable()
+def drainage_penalty(inputs):
+    dd = inputs[:, 2]
+    return (1.0 - 0.4 * tf.sigmoid((dd - 3.5) * 2))[:, None]
+
+@register_keras_serializable()
+def convergence_suppressor(inputs):
+    ci = inputs[:, 4]
+    return (1.0 + 0.3 * tf.sigmoid((ci - 0.5) * 8))[:, None]
+
 ####################################################################################################
 # Activation for all TrustNets
 ####################################################################################################
@@ -94,3 +112,10 @@ def firetrust_activation(x):
 @register_keras_serializable()
 def floodtrust_activation(x):
     return 0.5 + tf.sigmoid(x)
+
+####################################################################################################
+# Clip Modulation
+####################################################################################################
+
+def clip_modulation(x):
+    return tf.clip_by_value(x, 0.7, 1.3)
