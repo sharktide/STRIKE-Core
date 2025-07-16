@@ -110,7 +110,46 @@ def intensity_slope_amplifier(inputs):
     return (1.0 + 0.35 * runoff_boost * slope_boost)[:, None]
 
 ####################################################################################################
-# Activation for all TrustNets
+# QuakeNet
+####################################################################################################
+
+@register_keras_serializable()
+class StressAmplifier(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs):
+        stress = inputs[:, 2]
+        slip = inputs[:, 4]
+        stress_boost = tf.sigmoid((stress - 400) * 0.01)
+        slip_boost = tf.sigmoid((slip - 8) * 0.5)
+        modulation = 1.0 + 0.4 * stress_boost * slip_boost
+        return tf.expand_dims(modulation, axis=-1)
+
+@register_keras_serializable()
+class DepthSuppressor(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs):
+        depth = inputs[:, 3]
+        suppression = tf.sigmoid((depth - 25) * 0.15)
+        modulation = 1.0 - 0.3 * suppression
+        return tf.expand_dims(modulation, axis=-1)
+
+@register_keras_serializable()
+class DisplacementActivator(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs):
+        displacement = inputs[:, 1]
+        activation = tf.sigmoid((displacement - 30) * 0.08)
+        modulation = 1.0 + 0.3 * activation
+        return tf.expand_dims(modulation, axis=-1)
+
+####################################################################################################
+# Activation for TrustNets
 ####################################################################################################
 
 @register_keras_serializable()
@@ -126,8 +165,18 @@ def trust_activation(x):
     return 0.5 + tf.sigmoid(x)
 
 ####################################################################################################
-# Clip Modulation
+# Modulation
 ####################################################################################################
 
+@register_keras_serializable()
+class SoftScale(tf.keras.layers.Layer):
+    def __init__(self, factor=0.25, **kwargs):
+        super().__init__(**kwargs)
+        self.factor = factor
+
+    def call(self, inputs):
+        return 1.0 + self.factor * tf.tanh(inputs - 1.0)
+
+@register_keras_serializable()
 def clip_modulation(x):
     return tf.clip_by_value(x, 0.7, 1.3)

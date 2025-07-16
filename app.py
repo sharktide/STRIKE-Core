@@ -122,6 +122,31 @@ def predict_flash_flood(rainfall, slope, drainage, saturation, convergence, use_
         return f"⚠️ Flash Flood Possible ({adjusted:.2f})"
     else:
         return f"🛡️ Flash Flood Unlikely ({adjusted:.2f})"
+    
+def predict_quake(dotM0, sdr, coulomb, afd, fsr, use_trust):
+    dotM0 = dotM0 * 1e16
+
+    input_data = {
+        "seismic_moment_rate": dotM0,
+        "surface_displacement_rate": sdr,
+        "coulomb_stress_change": coulomb,
+        "average_focal_depth": afd,
+        "fault_slip_rate": fsr
+    }
+    input_df = pd.DataFrame([input_data])
+    base_pred = QuakeNet.predict(input_df)[0][0]
+    if use_trust:
+        trust_score = QuakeTrustNet.predict(QuakeTrustScaler.transform(input_df))[0][0]
+        adjusted = np.clip(base_pred * trust_score, 0, 1)
+    else:
+        adjusted = base_pred
+
+    if adjusted > 0.55:
+        return f"🌎 EARTHQUAKE LIKELY ({adjusted:.2f})"
+    elif 0.40 < adjusted <= 0.55:
+        return f"⚠️ Earthquake Possible ({adjusted:.2f})"
+    else:
+        return f"🛡️ Earthquake Unlikely ({adjusted:.2f})"
 
 def generate_plot(axis, use_trustnet):
     sweep_values = np.linspace({
@@ -299,7 +324,50 @@ def generate_flash_plot(axis, use_trust):
     ax.grid(True)
     return fig
 
-# Launch the app
+def generate_quake_plot(axis, use_trustnet):
+
+    axis_ranges = {
+        "seismic_moment_rate": (5e14, 2.5e16),
+        "surface_displacement_rate": (0, 100),
+        "coulomb_stress_change": (0, 700),
+        "average_focal_depth": (0, 60),
+        "fault_slip_rate": (0, 20)
+    }
+    sweep_values = np.linspace(*axis_ranges[axis], 100)
+
+    # Baseline input for all other features
+    base_input = {
+        "seismic_moment_rate": 1.5e16,
+        "surface_displacement_rate": 35,
+        "coulomb_stress_change": 300,
+        "average_focal_depth": 18,
+        "fault_slip_rate": 7.0
+    }
+
+    # Create sweep dataframe
+    sweep_df = pd.DataFrame([{**base_input, axis: val} for val in sweep_values])
+    raw_preds = QuakeNet.predict(sweep_df).flatten()
+
+    if use_trustnet:
+        scaled_df = QuakeTrustScaler.transform(sweep_df)
+        trust_scores = QuakeTrustNet.predict(scaled_df).flatten()
+        modulated = np.clip(raw_preds * trust_scores, 0, 1)
+    else:
+        modulated = raw_preds
+
+    # Plot
+    fig, ax = plt.subplots()
+    ax.plot(sweep_values, raw_preds, "--", color="gray", label="QuakeNet")
+    if use_trustnet:
+        ax.plot(sweep_values, modulated, color="darkred", label="With QuakeTrustNet")
+    ax.set_xlabel(axis.replace("_", " ").title())
+    ax.set_ylabel("Quake Probability")
+    ax.set_title(f"Earthquake Likelihood vs. {axis.replace('_', ' ').title()}")
+    ax.legend()
+    ax.grid(True)
+
+    return fig
+
 with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1rem !important; padding: 0.8em; } ") as demo:
     gr.Markdown("# ClimateNet - A family of tabular classification models to predict natural disasters")
 
@@ -547,5 +615,72 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
             ],
             outputs=[flash_output, flash_plot]
         )
+
+    with gr.Tab("🌎 Earthquakes"):
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    moment_input = gr.Slider(
+                        minimum=0.5, maximum=25.0, value=15.0,
+                        label="Seismic Moment Rate (×10¹⁶ Nm/s)"
+                    )
+                    gr.Dropdown(["Nm/s"], value="Nm/s", label="", scale=0.2)
+
+                with gr.Row():
+                    displacement_input = gr.Slider(0, 100, value=35, label="Surface Displacement Rate (mm/yr)")
+                    gr.Dropdown(["mm/yr"], value="mm/yr", label="", scale=0.2)
+
+                with gr.Row():
+                    stress_input = gr.Slider(0, 700, value=300, label="Coulomb Stress Change (Pa)")
+                    gr.Dropdown(["Pa"], value="Pa", label="", scale=0.2)
+
+                with gr.Row():
+                    depth_input = gr.Slider(0, 60, value=18, label="Average Focal Depth (km)")
+                    gr.Dropdown(["km"], value="km", label="", scale=0.2)
+
+                with gr.Row():
+                    slip_input = gr.Slider(0, 20, value=7.0, label="Fault Slip Rate (mm/yr)")
+                    gr.Dropdown(["mm/yr"], value="mm/yr", label="", scale=0.2)
+
+                use_trust_quake = gr.Checkbox(label="Use QuakeTrustNet", value=True)
+
+                quake_sweep_axis = gr.Radio(
+                    ["seismic_moment_rate", "surface_displacement_rate",
+                    "coulomb_stress_change", "average_focal_depth", "fault_slip_rate"],
+                    label="Sweep Axis", value="seismic_moment_rate"
+                )
+
+                quake_predict_btn = gr.Button("Predict")
+
+            with gr.Column():
+                with gr.Accordion("ℹ️ Feature Definitions", open=False):
+                    gr.Markdown("""
+    **Seismic Moment Rate (Nm/s):** Total energy release rate from seismic events.
+
+    **Surface Displacement Rate (mm/yr):** Horizontal/vertical ground motion observed via GPS/InSAR.
+
+    **Coulomb Stress Change (Pa):** Fault stress changes post-seismic activity.
+
+    **Average Focal Depth (km):** Typical depth of earthquakes in the region.
+
+    **Fault Slip Rate (mm/yr):** Long-term fault motion due to tectonic loading.
+                    """)
+
+                quake_output = gr.Textbox(label="Earthquake Risk Verdict")
+                quake_plot = gr.Plot(label="Trust Modulation Plot")
+
+        quake_predict_btn.click(
+            fn=lambda m, d, s, dp, sl, trust, axis: (
+                predict_quake(m, d, s, dp, sl, trust),
+                generate_quake_plot(axis, trust)
+            ),
+            inputs=[
+                moment_input, displacement_input,
+                stress_input, depth_input, slip_input,
+                use_trust_quake, quake_sweep_axis
+            ],
+            outputs=[quake_output, quake_plot]
+        )
+
 
 demo.launch(share=False)
