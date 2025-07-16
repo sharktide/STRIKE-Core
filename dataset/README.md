@@ -13,3 +13,4 @@ Some of these were synthetically generated with NumPy and others from real sourc
 | ``final_fire_dataset2.csv`` |  NumPy, [FIRMS](https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Global_7d.csv) | FireNet, FireTrustNet |
 | ``pluvial_flood_data_balanced.csv`` | NumPy | PV-FloodNet, PV-FloodTrustNet |
 | ``flash_flood_data.csv`` | NumPy | FlashFloodNet, FlashFloodTrustNet |
+| ``earthquake_data.csv`` | NumPy | QuakeNet, QuakeTrustNet |

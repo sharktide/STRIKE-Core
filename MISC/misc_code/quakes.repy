@@ -1,0 +1,138 @@
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.saving import register_keras_serializable
+import pandas as pd
+from sklearn.model_selection import train_test_split
+import joblib
+
+@register_keras_serializable()
+class StressAmplifier(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs):
+        stress = inputs[:, 2]
+        slip = inputs[:, 4]
+        stress_boost = tf.sigmoid((stress - 400) * 0.01)
+        slip_boost = tf.sigmoid((slip - 8) * 0.5)
+        modulation = 1.0 + 0.4 * stress_boost * slip_boost
+        return tf.expand_dims(modulation, axis=-1)
+
+@register_keras_serializable()
+class DepthSuppressor(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs):
+        depth = inputs[:, 3]
+        suppression = tf.sigmoid((depth - 25) * 0.15)
+        modulation = 1.0 - 0.3 * suppression
+        return tf.expand_dims(modulation, axis=-1)
+
+@register_keras_serializable()
+class DisplacementActivator(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs):
+        displacement = inputs[:, 1]
+        activation = tf.sigmoid((displacement - 30) * 0.08)
+        modulation = 1.0 + 0.3 * activation
+        return tf.expand_dims(modulation, axis=-1)
+
+@register_keras_serializable()
+class SoftScale(tf.keras.layers.Layer):
+    def __init__(self, factor=0.25, **kwargs):
+        super().__init__(**kwargs)
+        self.factor = factor
+
+    def call(self, inputs):
+        return 1.0 + self.factor * tf.tanh(inputs - 1.0)
+    
+@register_keras_serializable()
+def trust_activation(x):
+    return 0.5 + tf.sigmoid(x)
+
+import numpy as np
+import pandas as pd
+import joblib
+from tensorflow.keras.models import load_model
+
+# Load models and scaler
+quake_model = load_model("models/QuakeNet.h5", custom_objects={
+    'SoftScale': SoftScale,
+    'DisplacementActivator': DisplacementActivator,
+    'DepthSuppressor': DepthSuppressor,
+    'StressAmplifier': StressAmplifier
+})
+trust_model = load_model("models/QuakeTrustNet.h5", custom_objects={
+    'mse': tf.keras.losses.MeanSquaredError,
+    'trust_activation': trust_activation
+})
+scaler = joblib.load("models/QuakeTrustScaler.pkl")
+
+# Define test cases
+scenarios = [
+    {
+        "label": "Active Subduction Zone",
+        "features": [2.1e16, 45, 580, 32, 11.5],
+        "expected": "Quake"
+    },
+    {
+        "label": "Slow Deforming Plate Interior",
+        "features": [1.2e15, 6, 40, 10, 1.5],
+        "expected": "No Quake"
+    },
+    {
+        "label": "Shallow Stress Transfer Region",
+        "features": [1.6e16, 30, 460, 12, 9],
+        "expected": "Quake"
+    },
+    {
+        "label": "Volcanic Rift Zone (Noise)",
+        "features": [6e15, 18, 320, 5, 6],
+        "expected": "Possibly Quake"
+    },
+    {
+        "label": "Deep Craton with Low Motion",
+        "features": [8e14, 3, 30, 40, 1],
+        "expected": "No Quake"
+    },
+    {
+        "label": "Mixed Signal Anomaly",
+        "features": [1.2e16, 22, 300, 18, 7],
+        "expected": "Edge Case"
+    }
+]
+
+def classify_quake(pred, trust_score):
+    if pred < 0.4:
+        return "No Quake"
+    elif 0.4 <= pred <= 0.55:
+        if trust_score > 1.0:
+            return "Quake"
+        elif trust_score < 0.8:
+            return "No Quake"
+        else:
+            return "Possibly Quake"
+    else:
+        return "Quake"
+
+# Evaluate
+print("\nQuakeNet + QuakeTrustNet Dual Evaluation:\n")
+for case in scenarios:
+    features = case["features"]
+    raw = np.array(features, dtype="float32").reshape(1, -1)
+    scaled = scaler.transform(pd.DataFrame([features],
+                columns=["seismic_moment_rate", "surface_displacement_rate", "coulomb_stress_change", "average_focal_depth", "fault_slip_rate"]))
+
+    base_pred = quake_model(raw).numpy()[0][0]
+    trust_score = trust_model(scaled).numpy()[0][0]
+    verdict = classify_quake(base_pred, trust_score)
+
+    print(f"{case['label']}")
+    print(f"  > Features     : {features}")
+    print(f"  > QuakeNet     : {base_pred:.2f}")
+    print(f"  > Trust Score  : {trust_score:.2f}")
+    print(f"  > Final Verdict: {verdict}")
+    print(f"  > Expected     : {case['expected']}\n")
