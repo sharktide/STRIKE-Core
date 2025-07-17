@@ -148,6 +148,30 @@ def predict_quake(dotM0, sdr, coulomb, afd, fsr, use_trust):
     else:
         return f"🛡️ Earthquake Unlikely ({adjusted:.2f})"
 
+def predict_hurricane(sst, ohc, mlh, vws, pv, sstu, use_trust):
+    sst = convert_temp_c(value=sst, unit=sstu)
+    input_data = {
+        "sea_surface_temperature": sst,
+        "ocean_heat_content": ohc,
+        "mid_level_humidity": mlh,
+        "vertical_wind_shear": vws,
+        "potential_vorticity": pv
+    }
+    input_df = pd.DataFrame([input_data])
+    base_pred = HurricaneNet.predict(input_df)[0][0]
+    if use_trust:
+        trust_score = HurricaneTrustNet.predict(HurricaneTrustScaler.transform(input_df))[0][0]
+        adjusted = np.clip(base_pred * trust_score, 0, 1)
+    else:
+        adjusted = base_pred
+
+    if adjusted > 0.55:
+        return f"🌀 HURRICANE LIKELY ({adjusted:.2f})"
+    elif 0.40 < adjusted <= 0.55:
+        return f"⚠️ Hurricane Possible ({adjusted:.2f})"
+    else:
+        return f"🛡️ Hurricane Unlikely ({adjusted:.2f})"
+
 def generate_plot(axis, use_trustnet):
     sweep_values = np.linspace({
         "temperature": (280, 320),
@@ -213,12 +237,10 @@ def generate_flood_plot(axis, use_trustnet):
         "distance_from_river": 100.0
     }
 
-    # Build test cases by sweeping one input
     inputs = pd.DataFrame([
         {**base_example, axis: v} for v in values
     ])
 
-    # Predict with FloodNet
     floodnet_inputs = inputs.rename(columns={
         "rainfall": "Rainfall",
         "water_level": "Water Level",
@@ -226,7 +248,6 @@ def generate_flood_plot(axis, use_trustnet):
         "slope": "Slope",
         "distance_from_river": "Distance from River"
     })
-
     base_probs = FloodNet.predict(floodnet_inputs).flatten()
 
     if use_trustnet:
@@ -235,8 +256,6 @@ def generate_flood_plot(axis, use_trustnet):
         modulated_probs = np.clip(base_probs * trust_scores, 0, 1)
     else:
         modulated_probs = base_probs
-
-    # Plotting
     fig, ax = plt.subplots()
     ax.plot(values, base_probs, "--", color="gray", label="FloodNet")
     if use_trustnet:
@@ -325,7 +344,6 @@ def generate_flash_plot(axis, use_trust):
     return fig
 
 def generate_quake_plot(axis, use_trustnet):
-
     axis_ranges = {
         "seismic_moment_rate": (5e14, 2.5e16),
         "surface_displacement_rate": (0, 100),
@@ -335,7 +353,6 @@ def generate_quake_plot(axis, use_trustnet):
     }
     sweep_values = np.linspace(*axis_ranges[axis], 100)
 
-    # Baseline input for all other features
     base_input = {
         "seismic_moment_rate": 1.5e16,
         "surface_displacement_rate": 35,
@@ -344,7 +361,6 @@ def generate_quake_plot(axis, use_trustnet):
         "fault_slip_rate": 7.0
     }
 
-    # Create sweep dataframe
     sweep_df = pd.DataFrame([{**base_input, axis: val} for val in sweep_values])
     raw_preds = QuakeNet.predict(sweep_df).flatten()
 
@@ -355,7 +371,6 @@ def generate_quake_plot(axis, use_trustnet):
     else:
         modulated = raw_preds
 
-    # Plot
     fig, ax = plt.subplots()
     ax.plot(sweep_values, raw_preds, "--", color="gray", label="QuakeNet")
     if use_trustnet:
@@ -363,6 +378,49 @@ def generate_quake_plot(axis, use_trustnet):
     ax.set_xlabel(axis.replace("_", " ").title())
     ax.set_ylabel("Quake Probability")
     ax.set_title(f"Earthquake Likelihood vs. {axis.replace('_', ' ').title()}")
+    ax.legend()
+    ax.grid(True)
+
+    return fig
+
+def generate_hurricane_plot(axis, use_trustnet):
+
+    axis_ranges = {
+        "sea_surface_temperature": (24, 32),
+        "ocean_heat_content": (20, 150),
+        "mid_level_humidity": (20, 100),
+        "vertical_wind_shear": (0, 30),
+        "potential_vorticity": (0.0, 3.0)
+    }
+
+    sweep_values = np.linspace(*axis_ranges[axis], 100)
+
+    base_input = {
+        "sea_surface_temperature": 29.0,
+        "ocean_heat_content": 95,
+        "mid_level_humidity": 65,
+        "vertical_wind_shear": 9,
+        "potential_vorticity": 1.2
+    }
+
+    df = pd.DataFrame([{**base_input, axis: val} for val in sweep_values])
+    raw_preds = HurricaneNet.predict(df).flatten()
+
+    if use_trustnet:
+        scaled_df = HurricaneTrustScaler.transform(df)
+        trust_scores = HurricaneTrustNet.predict(scaled_df).flatten()
+        modulated = np.clip(raw_preds * trust_scores, 0, 1)
+    else:
+        modulated = raw_preds
+
+    # Plot
+    fig, ax = plt.subplots()
+    ax.plot(sweep_values, raw_preds, "--", color="gray", label="HurricaneNet")
+    if use_trustnet:
+        ax.plot(sweep_values, modulated, color="navy", label="Trust-Modulated")
+    ax.set_xlabel(axis.replace("_", " ").title())
+    ax.set_ylabel("Formation Likelihood")
+    ax.set_title(f"Hurricane Formation vs. {axis.replace('_', ' ').title()}")
     ax.legend()
     ax.grid(True)
 
@@ -680,6 +738,69 @@ with gr.Blocks(theme=gr.themes.Default(), css=".tab-nav-button { font-size: 1.1r
                 use_trust_quake, quake_sweep_axis
             ],
             outputs=[quake_output, quake_plot]
+        )
+    
+    with gr.Tab("🌀 Hurricanes"):
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    sst_input = gr.Slider(40, 140, value=80.0, label="Sea Surface Temperature (°C)")
+                    sst_unit = gr.Dropdown(["°C", "°F"], value="°F", label="", scale=0.2)
+                sst_unit.change(update_temp_slider, inputs=sst_unit, outputs=sst_input)
+                with gr.Row():
+                    ohc_input = gr.Slider(20, 150, value=95, label="Ocean Heat Content (kJ/cm²)")
+                    gr.Dropdown(["kJ/cm²"], value="kJ/cm²", label="", scale=0.2)
+
+                with gr.Row():
+                    humidity_input = gr.Slider(20, 100, value=65, label="Mid-Level Relative Humidity (%)")
+                    gr.Dropdown(["%"], value="%", label="", scale=0.2)
+
+                with gr.Row():
+                    shear_input = gr.Slider(0, 30, value=9, label="Vertical Wind Shear (m/s)")
+                    gr.Dropdown(["m/s"], value="m/s", label="", scale=0.2)
+
+                with gr.Row():
+                    vort_input = gr.Slider(0.0, 3.0, value=1.2, label="Potential Vorticity (PVU)")
+                    gr.Dropdown(["PVU"], value="PVU", label="", scale=0.2)
+
+                use_trust_cyclone = gr.Checkbox(label="Use HurricaneTrustNet", value=True)
+
+                hurricane_sweep_axis = gr.Radio(
+                    ["sea_surface_temperature", "ocean_heat_content",
+                    "mid_level_humidity", "vertical_wind_shear", "potential_vorticity"],
+                    label="Sweep Axis", value="sea_surface_temperature"
+                )
+
+                hurricane_predict_btn = gr.Button("Predict")
+
+            with gr.Column():
+                with gr.Accordion("ℹ️ Feature Definitions", open=False):
+                    gr.Markdown("""
+    **Sea Surface Temperature (°C):** Thermal fuel for cyclone formation.
+
+    **Ocean Heat Content (kJ/cm²):** Depth-integrated ocean energy — sustains storm growth.
+
+    **Mid-Level Relative Humidity (%):** Moisture around 500 hPa — supports convective core.
+
+    **Vertical Wind Shear (m/s):** Disrupts vertical structure — high values inhibit intensification.
+
+    **Potential Vorticity (PVU):** Atmospheric spin and structure — higher values favor formation.
+                    """)
+
+                hurricane_output = gr.Textbox(label="Hurricane Formation Verdict")
+                hurricane_plot = gr.Plot(label="Trust Modulation Plot")
+
+        hurricane_predict_btn.click(
+            fn=lambda sst, sst_unit, ohc, humid, shear, vort, trust, axis: (
+                predict_hurricane(sst, ohc, humid, shear, vort, sst_unit, trust),
+                generate_hurricane_plot(axis, trust)
+            ),
+            inputs=[
+                sst_input, sst_unit, ohc_input, humidity_input,
+                shear_input, vort_input, use_trust_cyclone,
+                hurricane_sweep_axis
+            ],
+            outputs=[hurricane_output, hurricane_plot]
         )
 
 

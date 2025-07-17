@@ -1,0 +1,138 @@
+import numpy as np
+import pandas as pd
+import joblib
+from tensorflow.keras.models import load_model
+import tensorflow as tf
+from tensorflow.keras.saving import register_keras_serializable
+from tensorflow.keras import layers, models, backend as K
+
+@register_keras_serializable()
+class SSTAmplifier(tf.keras.layers.Layer):
+    def __init__(self, threshold=28.0, scale=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.threshold = threshold
+        self.scale = scale
+
+    def call(self, inputs):
+        sst = inputs[:, 0]
+        factor = tf.sigmoid((sst - self.threshold) * self.scale)
+        mod = 1.0 + 0.3 * factor
+        return tf.expand_dims(mod, -1)
+
+@register_keras_serializable()
+class ShearSuppressor(tf.keras.layers.Layer):
+    def __init__(self, threshold=14.0, scale=0.2, **kwargs):
+        super().__init__(**kwargs)
+        self.threshold = threshold
+        self.scale = scale
+
+    def call(self, inputs):
+        shear = inputs[:, 3]
+        suppress = tf.sigmoid((self.threshold - shear) * self.scale)
+        mod = 1.0 - 0.25 * suppress
+        return tf.expand_dims(mod, -1)
+
+@register_keras_serializable()
+class VorticityActivator(tf.keras.layers.Layer):
+    def __init__(self, threshold=1.2, scale=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self.threshold = threshold
+        self.scale = scale
+
+    def call(self, inputs):
+        vort = inputs[:, 4]
+        activate = tf.sigmoid((vort - self.threshold) * self.scale)
+        mod = 1.0 + 0.2 * activate
+        return tf.expand_dims(mod, -1)
+
+@register_keras_serializable()
+class ModulationMixer(tf.keras.layers.Layer):
+    def call(self, inputs):
+        sst_mod, shear_mod, vort_mod = inputs
+        product = sst_mod * shear_mod * vort_mod
+        smooth = 1.0 + 0.25 * tf.tanh(product - 1.0)
+        return smooth
+
+@register_keras_serializable()
+def trust_activation(x):
+    return 0.5 + tf.sigmoid(x)
+
+hurricane_model = load_model("HurricaneNet.h5", custom_objects={
+    'ModulationMixer': ModulationMixer,
+    'VorticityActivator': VorticityActivator,
+    'ShearSuppressor': ShearSuppressor,
+    'SSTAmplifier': SSTAmplifier
+})
+trust_model = load_model("models/HurricaneTrustNet.h5", custom_objects={
+    "mse": tf.keras.losses.MeanSquaredError(),
+    "trust_activation": trust_activation
+})
+scaler = joblib.load("models/HurricaneTrustScaler.pkl")
+
+scenarios = [
+    {
+        "label": "Atlantic Warm Blob",
+        "features": [29.7, 115, 78, 3.5, 2.0],
+        "expected": "Hurricane"
+    },
+    {
+        "label": "Saharan Air Layer Suppression",
+        "features": [27.1, 68, 42, 19, 0.6],
+        "expected": "No Hurricane"
+    },
+    {
+        "label": "Tropical Wave Pre-Spin",
+        "features": [28.6, 93, 67, 9.5, 1.4],
+        "expected": "Hurricane"
+    },
+    {
+        "label": "Oceanic Dead Zone",
+        "features": [26.3, 48, 38, 21, 0.5],
+        "expected": "No Hurricane"
+    },
+    {
+        "label": "Shear-Cut Anomaly",
+        "features": [29.0, 98, 62, 17, 1.2],
+        "expected": "Possibly Hurricane"
+    },
+    {
+        "label": "Hot SST / Low Vorticity",
+        "features": [30.1, 120, 75, 6, 0.3],
+        "expected": "Edge Case"
+    }
+]
+
+# Final logic
+def classify(pred, trust_score):
+    if pred < 0.4:
+        return "No Hurricane"
+    elif 0.4 <= pred <= 0.55:
+        if trust_score > 1.0:
+            return "Hurricane"
+        elif trust_score < 0.8:
+            return "No Hurricane"
+        else:
+            return "Possibly Hurricane"
+    else:
+        return "Hurricane"
+
+# Run evaluation
+print("\nHurricaneNet + HurricaneTrustNet Dual Evaluation:\n")
+for case in scenarios:
+    features = case["features"]
+    raw = np.array(features, dtype="float32").reshape(1, -1)
+    scaled = scaler.transform(pd.DataFrame([features], columns=[
+        "sea_surface_temperature", "ocean_heat_content",
+        "mid_level_humidity", "vertical_wind_shear", "potential_vorticity"
+    ]))
+
+    base_pred = hurricane_model(raw).numpy()[0][0]
+    trust_score = trust_model(scaled).numpy()[0][0]
+    verdict = classify(base_pred, trust_score)
+
+    print(f"{case['label']}")
+    print(f"  > Features     : {features}")
+    print(f"  > HurricaneNet : {base_pred:.2f}")
+    print(f"  > Trust Score  : {trust_score:.2f}")
+    print(f"  > Final Verdict: {verdict}")
+    print(f"  > Expected     : {case['expected']}\n")

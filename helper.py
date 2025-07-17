@@ -3,6 +3,9 @@ import gradio as gr
 def convert_temperature(value, unit):
     return value if unit == "K" else (value + 273.15 if unit == "°C" else (value - 32) * 5/9 + 273.15)
 
+def convert_temp_c(value, unit):
+    return value if unit == "°C" else (value - 32) * 5/9
+
 def convert_wind_speed(value, unit):
     return value if unit == "m/s" else (value / 3.6 if unit == "km/h" else value * 0.44704)
 

@@ -66,3 +66,16 @@ QuakeTrustNet = tf.keras.models.load_model("models/QuakeTrustNet.h5", custom_obj
     'trust_activation': trust_activation
 })
 QuakeTrustScaler = joblib.load("models/QuakeTrustScaler.pkl")
+
+
+HurricaneNet = tf.keras.models.load_model("models/HurricaneNet.h5", custom_objects={
+    'ModulationMixer': ModulationMixer,
+    'VorticityActivator': VorticityActivator,
+    'ShearSuppressor': ShearSuppressor,
+    'SSTAmplifier': SSTAmplifier
+})
+HurricaneTrustNet = tf.keras.models.load_model("models/HurricaneTrustNet.h5", custom_objects={
+    "mse": tf.keras.losses.MeanSquaredError(),
+    "trust_activation": trust_activation
+})
+HurricaneTrustScaler = joblib.load("models/HurricaneTrustScaler.pkl")

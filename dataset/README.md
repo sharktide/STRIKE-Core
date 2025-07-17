@@ -14,3 +14,4 @@ Some of these were synthetically generated with NumPy and others from real sourc
 | ``pluvial_flood_data_balanced.csv`` | NumPy | PV-FloodNet, PV-FloodTrustNet |
 | ``flash_flood_data.csv`` | NumPy | FlashFloodNet, FlashFloodTrustNet |
 | ``earthquake_data.csv`` | NumPy | QuakeNet, QuakeTrustNet |
+| ``hurricane_data.csv`` | NumPy | HurricaneNet, HurricaneTrustNet |
