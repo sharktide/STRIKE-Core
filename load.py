@@ -32,7 +32,7 @@ PV_FloodNet = tf.keras.models.load_model("models/PV-FloodNet.h5", custom_objects
     'drainage_penalty': drainage_penalty,
     'surface_runoff_amplifier': surface_runoff_amplifier,
     'clip_modulation': clip_modulation,
-})
+}, safe_mode=False)
 PV_FloodTrustNet = tf.keras.models.load_model("models/PV-FloodTrustNet.h5", custom_objects={
     'floodtrust_activation': floodtrust_activation,
     'mse': tf.keras.losses.MeanSquaredError()
@@ -46,7 +46,7 @@ FlashFloodNet = tf.keras.models.load_model("models/FlashFloodNet.h5", custom_obj
     'intensity_slope_amplifier': intensity_slope_amplifier,
     'convergence_suppressor': convergence_suppressor,
     'clip_modulation': clip_modulation
-})
+}, safe_mode=False)
 FlashFloodTrustNet = tf.keras.models.load_model("models/FlashFloodTrustNet.h5", custom_objects={
     'mse': tf.keras.losses.MeanSquaredError(),
     'trust_activation': trust_activation
@@ -60,7 +60,7 @@ QuakeNet = tf.keras.models.load_model("models/QuakeNet.h5", custom_objects={
     'DepthSuppressor': DepthSuppressor,
     'DisplacementActivator': DisplacementActivator,
     'SoftScale': SoftScale
-})
+}, safe_mode=False)
 QuakeTrustNet = tf.keras.models.load_model("models/QuakeTrustNet.h5", custom_objects={
     'mse': tf.keras.losses.MeanSquaredError(),
     'trust_activation': trust_activation
@@ -73,7 +73,7 @@ HurricaneNet = tf.keras.models.load_model("models/HurricaneNet.h5", custom_objec
     'VorticityActivator': VorticityActivator,
     'ShearSuppressor': ShearSuppressor,
     'SSTAmplifier': SSTAmplifier
-})
+}, safe_mode=False)
 HurricaneTrustNet = tf.keras.models.load_model("models/HurricaneTrustNet.h5", custom_objects={
     "mse": tf.keras.losses.MeanSquaredError(),
     "trust_activation": trust_activation
@@ -85,7 +85,7 @@ TornadoNet = tf.keras.models.load_model("models/TornadoNet.h5", custom_objects={
     'LCLSuppressor': LCLSuppressor,
     'STPActivator': STPActivator,
     'ModulationMixer': TornadoModulationMixer
-})
+}, safe_mode=False)
 TornadoTrustNet = tf.keras.models.load_model("models/TornadoTrustNet.h5", custom_objects={
     'mse': tf.keras.losses.MeanSquaredError(),
     'trust_activation': trust_activation

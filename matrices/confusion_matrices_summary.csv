@@ -1,0 +1,8 @@
+Model,Accuracy (Base),Accuracy (Trust),Improvement
+Fire,0.9798,0.9856,+0.58%
+FlashFlood,0.9959,0.9956,-0.03%
+Flood,1.0000,1.0000,+0.00%
+PVFlood,0.9948,0.9936,-0.12%
+Quake,0.9708,0.9672,-0.36%
+Hurricane,0.9980,0.9978,-0.02%
+Tornado,0.9943,0.9936,-0.07%
