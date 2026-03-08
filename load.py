@@ -1,93 +1,98 @@
 from objects import *
 import joblib
+accel = "/cpu:0"  # Default to CPU
+if (tf.config.list_physical_devices('GPU')):
+    print("GPU detected. Using GPU for computations.")
+    accel = "/gpu:0"
 
-FireNet = tf.keras.models.load_model("models/FireNet.h5", custom_objects={
-    "cold_temp_penalty": cold_temp_penalty,
-    "fire_risk_booster": fire_risk_booster,
-    "fire_suppression_mask": fire_suppression_mask
-})
-FireTrustNet = tf.keras.models.load_model("models/FireTrustNet.h5", custom_objects={
-    "firetrust_activation": firetrust_activation,
-    "mse": tf.keras.losses.MeanSquaredError()
-})
-FireScaler = joblib.load("models/firetrust_scaler.pkl")
-
-
-
-FloodNet = tf.keras.models.load_model("models/FV-FloodNet.h5", custom_objects={
-    "rainfall_proximity_penalty": rainfall_proximity_penalty,
-    "flood_risk_booster": flood_risk_booster,
-    "flood_suppression_mask": flood_suppression_mask
-})
-FloodTrustNet = tf.keras.models.load_model("models/FV-FloodTrustNet.h5", custom_objects={
-    "floodtrust_activation": floodtrust_activation,
-    "mse": tf.keras.losses.MeanSquaredError()
-})
-FloodScaler = joblib.load("models/FV-floodtrust_scaler.pkl")
+with tf.device(accel):
+    FireNet = tf.keras.models.load_model("models/FireNet.h5", custom_objects={
+        "cold_temp_penalty": cold_temp_penalty,
+        "fire_risk_booster": fire_risk_booster,
+        "fire_suppression_mask": fire_suppression_mask
+    })
+    FireTrustNet = tf.keras.models.load_model("models/FireTrustNet.h5", custom_objects={
+        "firetrust_activation": firetrust_activation,
+        "mse": tf.keras.losses.MeanSquaredError()
+    })
+    FireScaler = joblib.load("models/firetrust_scaler.pkl")
 
 
 
-PV_FloodNet = tf.keras.models.load_model("models/PV-FloodNet.h5", custom_objects={
-    'convergence_suppressor': convergence_suppressor,
-    'drainage_penalty': drainage_penalty,
-    'surface_runoff_amplifier': surface_runoff_amplifier,
-    'clip_modulation': clip_modulation,
-}, safe_mode=False)
-PV_FloodTrustNet = tf.keras.models.load_model("models/PV-FloodTrustNet.h5", custom_objects={
-    'floodtrust_activation': floodtrust_activation,
-    'mse': tf.keras.losses.MeanSquaredError()
-})
-PV_FloodScaler = joblib.load("models/PV-floodtrust_scaler.pkl")
+    FloodNet = tf.keras.models.load_model("models/FV-FloodNet.h5", custom_objects={
+        "rainfall_proximity_penalty": rainfall_proximity_penalty,
+        "flood_risk_booster": flood_risk_booster,
+        "flood_suppression_mask": flood_suppression_mask
+    })
+    FloodTrustNet = tf.keras.models.load_model("models/FV-FloodTrustNet.h5", custom_objects={
+        "floodtrust_activation": floodtrust_activation,
+        "mse": tf.keras.losses.MeanSquaredError()
+    })
+    FloodScaler = joblib.load("models/FV-floodtrust_scaler.pkl")
 
 
 
-FlashFloodNet = tf.keras.models.load_model("models/FlashFloodNet.h5", custom_objects={
-    'drainage_penalty': drainage_penalty,
-    'intensity_slope_amplifier': intensity_slope_amplifier,
-    'convergence_suppressor': convergence_suppressor,
-    'clip_modulation': clip_modulation
-}, safe_mode=False)
-FlashFloodTrustNet = tf.keras.models.load_model("models/FlashFloodTrustNet.h5", custom_objects={
-    'mse': tf.keras.losses.MeanSquaredError(),
-    'trust_activation': trust_activation
-})
-FlashFloodScaler = joblib.load("models/flashFloodtrustscaler.pkl")
+    PV_FloodNet = tf.keras.models.load_model("models/PV-FloodNet.h5", custom_objects={
+        'convergence_suppressor': convergence_suppressor,
+        'drainage_penalty': drainage_penalty,
+        'surface_runoff_amplifier': surface_runoff_amplifier,
+        'clip_modulation': clip_modulation,
+    }, safe_mode=False)
+    PV_FloodTrustNet = tf.keras.models.load_model("models/PV-FloodTrustNet.h5", custom_objects={
+        'floodtrust_activation': floodtrust_activation,
+        'mse': tf.keras.losses.MeanSquaredError()
+    })
+    PV_FloodScaler = joblib.load("models/PV-floodtrust_scaler.pkl")
 
 
 
-QuakeNet = tf.keras.models.load_model("models/QuakeNet.h5", custom_objects={
-    'StressAmplifier': StressAmplifier,
-    'DepthSuppressor': DepthSuppressor,
-    'DisplacementActivator': DisplacementActivator,
-    'SoftScale': SoftScale
-}, safe_mode=False)
-QuakeTrustNet = tf.keras.models.load_model("models/QuakeTrustNet.h5", custom_objects={
-    'mse': tf.keras.losses.MeanSquaredError(),
-    'trust_activation': trust_activation
-})
-QuakeTrustScaler = joblib.load("models/QuakeTrustScaler.pkl")
+    FlashFloodNet = tf.keras.models.load_model("models/FlashFloodNet.h5", custom_objects={
+        'drainage_penalty': drainage_penalty,
+        'intensity_slope_amplifier': intensity_slope_amplifier,
+        'convergence_suppressor': convergence_suppressor,
+        'clip_modulation': clip_modulation
+    }, safe_mode=False)
+    FlashFloodTrustNet = tf.keras.models.load_model("models/FlashFloodTrustNet.h5", custom_objects={
+        'mse': tf.keras.losses.MeanSquaredError(),
+        'trust_activation': trust_activation
+    })
+    FlashFloodScaler = joblib.load("models/flashFloodtrustscaler.pkl")
 
 
-HurricaneNet = tf.keras.models.load_model("models/HurricaneNet.h5", custom_objects={
-    'ModulationMixer': ModulationMixer,
-    'VorticityActivator': VorticityActivator,
-    'ShearSuppressor': ShearSuppressor,
-    'SSTAmplifier': SSTAmplifier
-}, safe_mode=False)
-HurricaneTrustNet = tf.keras.models.load_model("models/HurricaneTrustNet.h5", custom_objects={
-    "mse": tf.keras.losses.MeanSquaredError(),
-    "trust_activation": trust_activation
-})
-HurricaneTrustScaler = joblib.load("models/HurricaneTrustScaler.pkl")
 
-TornadoNet = tf.keras.models.load_model("models/TornadoNet.h5", custom_objects={
-    'CAPEAmplifier': CAPEAmplifier,
-    'LCLSuppressor': LCLSuppressor,
-    'STPActivator': STPActivator,
-    'ModulationMixer': TornadoModulationMixer
-}, safe_mode=False)
-TornadoTrustNet = tf.keras.models.load_model("models/TornadoTrustNet.h5", custom_objects={
-    'mse': tf.keras.losses.MeanSquaredError(),
-    'trust_activation': trust_activation
-})
-TornadoTrustScaler = joblib.load("models/TornadoTrustScaler.pkl")
+    QuakeNet = tf.keras.models.load_model("models/QuakeNet.h5", custom_objects={
+        'StressAmplifier': StressAmplifier,
+        'DepthSuppressor': DepthSuppressor,
+        'DisplacementActivator': DisplacementActivator,
+        'SoftScale': SoftScale
+    }, safe_mode=False)
+    QuakeTrustNet = tf.keras.models.load_model("models/QuakeTrustNet.h5", custom_objects={
+        'mse': tf.keras.losses.MeanSquaredError(),
+        'trust_activation': trust_activation
+    })
+    QuakeTrustScaler = joblib.load("models/QuakeTrustScaler.pkl")
+
+
+    HurricaneNet = tf.keras.models.load_model("models/HurricaneNet.h5", custom_objects={
+        'ModulationMixer': ModulationMixer,
+        'VorticityActivator': VorticityActivator,
+        'ShearSuppressor': ShearSuppressor,
+        'SSTAmplifier': SSTAmplifier
+    }, safe_mode=False)
+    HurricaneTrustNet = tf.keras.models.load_model("models/HurricaneTrustNet.h5", custom_objects={
+        "mse": tf.keras.losses.MeanSquaredError(),
+        "trust_activation": trust_activation
+    })
+    HurricaneTrustScaler = joblib.load("models/HurricaneTrustScaler.pkl")
+
+    TornadoNet = tf.keras.models.load_model("models/TornadoNet.h5", custom_objects={
+        'CAPEAmplifier': CAPEAmplifier,
+        'LCLSuppressor': LCLSuppressor,
+        'STPActivator': STPActivator,
+        'ModulationMixer': TornadoModulationMixer
+    }, safe_mode=False)
+    TornadoTrustNet = tf.keras.models.load_model("models/TornadoTrustNet.h5", custom_objects={
+        'mse': tf.keras.losses.MeanSquaredError(),
+        'trust_activation': trust_activation
+    })
+    TornadoTrustScaler = joblib.load("models/TornadoTrustScaler.pkl")

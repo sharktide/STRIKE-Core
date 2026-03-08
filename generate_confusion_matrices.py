@@ -19,6 +19,10 @@ from objects import *
 from load import *
 
 os.makedirs("matrices", exist_ok=True)
+accel = "/cpu:0"  # Default to CPU
+if (tf.config.list_physical_devices('GPU')):
+    print("GPU detected. Using GPU for computations.")
+    accel = "/gpu:0"
 
 MODELS_CONFIG = {
     'Fire': {
@@ -94,18 +98,19 @@ def generate_predictions(model, X, trust_model=None, scaler=None, use_trust=Fals
     Returns:
         Array of binary predictions (0 or 1)
     """
-    base_predictions = model.predict(X, verbose=0)
-    
-    if use_trust and trust_model is not None and scaler is not None:
-        scaled_X = scaler.transform(X)
-        trust_scores = trust_model.predict(scaled_X, verbose=0)
-        # Combine base predictions with trust scores
-        combined = base_predictions * trust_scores
-        predictions = (combined > 0.5).astype(int).flatten()
-    else:
-        predictions = (base_predictions > 0.5).astype(int).flatten()
-    
-    return predictions
+    with tf.device(accel):
+        base_predictions = model.predict(X, verbose=0)
+        
+        if use_trust and trust_model is not None and scaler is not None:
+            scaled_X = scaler.transform(X)
+            trust_scores = trust_model.predict(scaled_X, verbose=0)
+            # Combine base predictions with trust scores
+            combined = base_predictions * trust_scores
+            predictions = (combined > 0.5).astype(int).flatten()
+        else:
+            predictions = (base_predictions > 0.5).astype(int).flatten()
+        
+        return predictions
 
 
 def create_confusion_matrix_plot(y_true, y_pred, title, save_path):
